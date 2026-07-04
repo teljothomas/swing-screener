@@ -1,0 +1,50 @@
+name: Morning swing scan
+
+on:
+  schedule:
+    # 02:30 UTC = 08:00 IST, Monday-Friday. GitHub cron can start a few
+    # minutes late at busy times; the report still lands well before 9:15.
+    - cron: "30 2 * * 1-5"
+  workflow_dispatch: {}
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run screener (NIFTY 500, holiday-aware, Telegram report)
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python screener.py --auto --universe nifty500
+
+      - name: Upload results CSV
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-results
+          path: results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Telegram alert if the scan failed
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+            curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+              -d chat_id="$TELEGRAM_CHAT_ID" \
+              -d text="⚠️ Swing screener FAILED this morning - check the GitHub Actions log."
+          fi
