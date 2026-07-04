@@ -41,7 +41,7 @@ Results print to the screen and are saved to `results/scan_<date>.csv`
 
 | When | What to run | Why |
 |---|---|---|
-| **Mon–Fri, 8:00 AM (automated)** | Task Scheduler runs `run_morning_scan.bat` for you | Yesterday's candle is final; results are ready before the 9:15 open so you can place your orders. See "Automation" below. |
+| **Mon–Fri, 8:00 AM (automated)** | GitHub Actions runs it in the cloud (section 11); Task Scheduler is the local backup (section 8) | Yesterday's candle is final; results reach your phone before the 9:15 open so you can place your orders. |
 | **Mon–Fri, 6:30–9:00 PM (optional manual)** | `python screener.py` | Same signals as next morning's 8 AM run, if you prefer to plan the night before. |
 | **Saturday morning** | `python screener.py --universe nifty500 --setups` | Deep weekly scan. Build next week's watchlist from squeeze SETUPs and strong sectors. |
 | **Never intraday** | — | Before 3:30 PM the daily candle is incomplete; every signal can vanish by close. |
@@ -223,7 +223,49 @@ battery-killer interference — fragile on Android. Letting the PC (or later, a
 free cloud runner) do the work and pushing the result to Telegram gives you
 the same "app on my phone" experience with none of those failure modes.
 
-## 11. Troubleshooting
+## 11. Cloud mode — GitHub Actions (primary, PC can stay off)
+
+The repo lives at **https://github.com/teljothomas/swing-screener** (private).
+A workflow (`.github/workflows/morning-scan.yml`) runs every **Mon–Fri at
+08:00 IST** on GitHub's free servers: NIFTY 500 scan + holdings signals +
+Telegram report. Your PC plays no part.
+
+One-time setup — add the two Telegram secrets:
+
+1. On GitHub: repo → **Settings → Secrets and variables → Actions →
+   New repository secret**. Add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
+   (from @BotFather / @userinfobot, see section 10).
+   Or from this folder: `gh secret set TELEGRAM_BOT_TOKEN` then
+   `gh secret set TELEGRAM_CHAT_ID` (paste value when prompted).
+2. Test it: **Actions → Morning swing scan → Run workflow**, or
+   `gh workflow run morning-scan.yml`. The report should reach your phone
+   in ~5 minutes.
+
+Updating your holdings from anywhere (this is the only "input" the system
+ever needs from you):
+
+- Install the **GitHub mobile app** (or use github.com in a browser), open
+  `holdings.csv`, tap edit, add/remove a position line, commit. Next
+  morning's report uses it.
+- Or locally: edit `holdings.csv`, then `git add holdings.csv`,
+  `git commit -m "update holdings"`, `git push`.
+
+Good to know:
+
+- **Cron drift:** GitHub schedules are best-effort; the run usually starts
+  0–10 minutes late. It still beats the 9:15 open comfortably.
+- **60-day rule:** GitHub pauses schedules in repos with no activity for
+  60 days (it emails you first). Any holdings commit resets the clock — as an
+  active swing trader you'll do this naturally.
+- **Failure alert:** if a run errors, the workflow Telegrams you a warning
+  (once secrets are set) instead of failing silently.
+- **Results history:** each run uploads the scan CSV as an artifact
+  (Actions → run → Artifacts, kept 14 days).
+- The local 8 AM Task Scheduler job (section 8) is now a **backup**. Once the
+  cloud report reaches your phone, disable the local one to avoid duplicates:
+  `Disable-ScheduledTask -TaskName "NSE Swing Screener 8AM"`.
+
+## 12. Troubleshooting
 
 | Problem | Fix |
 |---|---|
@@ -231,5 +273,6 @@ the same "app on my phone" experience with none of those failure modes.
 | Very slow / rate-limited | Use `--universe nifty200` daily; save `nifty500` for weekends. |
 | No results today | Normal. Setups cluster. Never lower the bar just to trade. |
 | Symbol errors in console | Renamed/delisted tickers — safe to ignore. |
-| 8 AM run didn't happen | PC was off — it runs at next login. Check `logs/last_run.log` and Task Scheduler history. |
-| No Telegram message | Check `telegram.json` values; make sure you pressed **Start** on your bot; holiday mornings are silent by design. |
+| 8 AM run didn't happen (local task) | PC was off — it runs at next login. Check `logs/last_run.log` and Task Scheduler history. |
+| No Telegram message | Check the repo secrets / `telegram.json` values; make sure you pressed **Start** on your bot; holiday mornings are silent by design. |
+| Cloud run failed / no message | Open the repo's **Actions** tab and read the log of the failed run. Yahoo rate limits are retried automatically; a rare bad day fixes itself tomorrow. |
